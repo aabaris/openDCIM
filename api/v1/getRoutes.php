@@ -21,6 +21,44 @@
   **/
 
 //
+//  URL:  		/api/v1/audit
+//  Method: 	GET
+//  Params:		DeviceID or CabinetID.   If both provided, DeviceID takes precedence.
+//  Returns:	Last audit date of given parameter.
+//
+
+$app->get( '/audit', function() {
+	$r = array();
+	$error = false;
+
+	$attrList = getParsedBody();
+
+	if ( isset( $attrList["DeviceID"] ) ) {
+		$auditList = LogActions::getDeviceAudits( $attrList["DeviceID"] );
+	} elseif ( isset( $attrList["CabinetID"] ) ) {
+		$log = new LogActions();
+		$log->ObjectID = $attrList["CabinetID"];
+		$log->Class = "CabinetAudit";
+		$log->Action = "CertifyAudit";
+		$auditList = $log->Search();
+	} else {
+		$error = true;
+	}
+
+
+	if ( ! $error ) {
+		$r['error'] = false;
+		$r['errorcode'] = 200;
+		$r['audit'] = $auditList;
+	} else {
+		$r['error'] = true;
+		$r['errorcode'] = 403;
+		$r["input"] = $attrList;
+	}
+
+	echoResponse( $r );
+});
+
 //	URL:  /api/v1/people
 //	Method: GET
 //	Params:  none
@@ -30,30 +68,30 @@ $app->get('/people', function() {
 	global $person;
 	
 	$person->GetUserRights();
-	if(!$person->ContactAdmin){
-		$r['error'] = true;
-		$r['errorcode'] = 401;
-		$r['message'] = _("Access Denied");
-	}else{
-		$sp=new People();
-		$loose = false;
-		$outputAttr = array();
-		$attrList = getParsedBody();
-		foreach($attrList as $prop => $val){
-			if ( strtoupper($prop) == "WILDCARDS" ) {
-				$loose = true;
-			} elseif ( strtoupper($prop) == "ATTRIBUTES" ) {
-				$outputAttr = explode( ",", $val );
-			} elseif ( property_exists( $sp, $prop )) {
-				$sp->$prop=$val;
-			}
-		}
 
-		$r = array();
-		$r['error'] = false;
-		$r['errorcode'] = 200;
-		$r['people'] = specifyAttributes( $outputAttr, $sp->Search( false, $loose ));
+	$sp=new People();
+	$loose = false;
+	$outputAttr = array();
+	$attrList = getParsedBody();
+	foreach($attrList as $prop => $val){
+		if ( strtoupper($prop) == "WILDCARDS" ) {
+			$loose = true;
+		} elseif ( strtoupper($prop) == "ATTRIBUTES" ) {
+			$outputAttr = explode( ",", $val );
+		} elseif ( property_exists( $sp, $prop )) {
+			$sp->$prop=$val;
+		}
 	}
+
+	if(!$person->ContactAdmin){
+		// Anybody that isn't an admin gets limited fields returned
+		$outputAttr = array( 'PersonID', 'FirstName', 'LastName' );
+	}
+
+	$r = array();
+	$r['error'] = false;
+	$r['errorcode'] = 200;
+	$r['people'] = specifyAttributes( $outputAttr, $sp->Search( false, $loose ));
 
 	echoResponse( $r );
 });
@@ -68,30 +106,24 @@ $app->get('/people', function() {
 $app->get('/department', function() use($person) {
 	$r = array();
 
-	if ( !$person->ContactAdmin){
-		$r['error'] = true;
-		$r['errorcode'] = 401;
-		$r['message'] = _("Access Denied");
-	} else {
-		$dList = array();
-		$dept=new Department();
-		$loose = false;
-		$outputAttr = array();
-		$attrList = getParsedBody();
-		foreach($attrList as $prop => $val){
-			if ( strtoupper($prop) == "WILDCARDS" ) {
-				$loose = true;
-			} elseif ( strtoupper($prop) == "ATTRIBUTES" ) {
-				$outputAttr = explode( ",", $val );
-			} elseif( property_exists( $dept, $prop )) {
-				$dept->$prop=$val;
-			}
-		}		
+	$dList = array();
+	$dept=new Department();
+	$loose = false;
+	$outputAttr = array();
+	$attrList = getParsedBody();
+	foreach($attrList as $prop => $val){
+		if ( strtoupper($prop) == "WILDCARDS" ) {
+			$loose = true;
+		} elseif ( strtoupper($prop) == "ATTRIBUTES" ) {
+			$outputAttr = explode( ",", $val );
+		} elseif( property_exists( $dept, $prop )) {
+			$dept->$prop=$val;
+		}
+	}		
 
-		$r['error'] = false;
-		$r['errorcode'] = 200;
-		$r['department'] = specifyAttributes( $outputAttr, $dept->Search( false, $loose ));
-	}
+	$r['error'] = false;
+	$r['errorcode'] = 200;
+	$r['department'] = specifyAttributes( $outputAttr, $dept->Search( false, $loose ));
 
 	echoResponse( $r );
 });
@@ -415,7 +447,6 @@ $app->get( '/device/:deviceid', function( $deviceid ) {
 		$r['error']=true;
 		$r['errorcode']=404;
 		$r['message']=__("No device found with DeviceID").$deviceid;
-		echoResponse( $r );
 	}else{
 		$r['error']=false;
 		$r['errorcode']=200;
@@ -651,7 +682,7 @@ $app->get( '/devicestatus', function() {
 $app->get( '/devicestatus/:statusid', function($statusid) {
 	$r['error'] = false;
 	$r['errorcode'] = 200;
-	$ds=new DeviceStatus($statisid);
+	$ds=new DeviceStatus($statusid);
 	if(!$ds->getStatus()){
 		$r['error']=true;
 		$r['errorcode']=404;

@@ -18,6 +18,64 @@
   *
   **/
 
+//
+// URL:		/api/v1/audit
+// Method:	PUT
+// Params:	DeviceID or CabinetID.   If both specified, CabinetID takes precedence.
+// Returns:	Record as created
+// Notes:	Relies on the backend rights checks to ensure that an audit record can
+// 			only be added by someone with access to do so.
+// 			
+
+$app->put( '/audit', function() {
+	$r = array();
+	$error = false;
+
+	$attrList = getParsedBody();
+	$log = new LogActions();
+
+	if ( isset( $attrList["CabinetID"] ) ) {
+		$cab = new Cabinet();
+		$cab->CabinetID = $attrList["CabinetID"];
+		if ( $cab->GetCabinet() ) {
+			$audit = new CabinetAudit();
+			$audit->CabinetID = $attrList["CabinetID"];
+			if ( isset( $attrList["Comments"] ) ) {
+				$audit->Comments = sanitize( $attrList["Comments"] );
+			}
+			$audit->CertifyAudit();
+			$r['error'] = false;
+			$r['errorcode'] = 200;
+			$r['message'] = __("Audit record added successfully.");
+		} else {
+			$r['error'] = true;
+			$r['errorcode'] = 404;
+			$r['message'] = __("Specified CabinetID not found.");
+			$r['parameters'] = $attrList;
+		}
+	} elseif ( isset( $attrList["DeviceID"] ) ) {
+		$dev = new Device();
+		$dev->DeviceID = $attrList["DeviceID"];
+		if ( $dev->GetDevice() ) {
+			$dev->Audit();
+			$r['error'] = false;
+			$r['errorcode'] = 200;
+			$r['message'] = __("Audit record added successfully.");
+		} else {
+			$r['error'] = true;
+			$r['errorcode'] = 404;
+			$r['message'] = __("Specified DeviceID not found.");
+			$r['parameters'] = $attrList;
+		}
+	} else {
+		$r['error'] = true;
+		$r['errorcode'] = 400;
+		$r['message'] = __("Invalid input parameters.");
+		$r['parameters'] = $attrList;
+	}
+
+	echoResponse( $r );
+});
 
 //
 //	URL:	/api/v1/people/:userid
@@ -73,6 +131,55 @@ $app->put('/people/:userid', function($userid) use ($person) {
 });
 
 //
+//  URL:    /api/v1/cabinet
+//  Method:	PUT
+//  Params:
+//  	Required: DataCenterID, Location, CabinetHeight
+//  	Optional: All others
+//  Returns: record as created
+//  
+
+$app->put( '/cabinet', function() use ($person) {
+	if ( ! $person->SiteAdmin ) {
+		$r['error'] = true;
+		$r['errorcode'] = 401;
+		$r['message'] = __("Access Denied");
+	} else {
+		$cab = new Cabinet();
+		$vars = getParsedBody();
+
+		foreach ($vars as $prop=>$val) {
+			if ( property_exists($cab, $prop)) {
+				$cab->$prop = $val;
+			}
+		}
+
+		$cab->MakeSafe();
+
+		// Check for the required values
+		if ( $cab->DataCenterID < 1 || $cab->Location == "" || $cab->CabinetHeight < 1 ) {
+			$r['error'] = true;
+			$r['errorcode'] = 400;
+			$r['message'] = __("Minimum required fields are not set:  DataCenterID, Location, and CabinetHeight");
+			$r['input'] = $vars;
+		} else {
+			if ( ! $cab->CreateCabinet() ) {
+				$r['error'] = true;
+				$r['errorcode'] = 400;
+				$r['message'] = __("Error creating cabinet.");
+			} else {
+				$r['error'] = false;
+				$r['errorcode'] = 200;
+				$r['message'] = __("New cabinet created successfully.");
+				$r['cabinet'][$cab->CabinetID] = $cab;
+			}
+		}
+	}
+
+	echoResponse( $r );
+});
+
+//
 //	URL:	/api/v1/colorcode/:name
 //	Method:	PUT
 //	Params: 
@@ -105,6 +212,45 @@ $app->put( '/colorcode/:colorname', function($colorname) use ($person) {
 			$r['errorcode']=200;
 			$r['message']=__("New color created successfully.");
 			$r['colorcode'][$cc->ColorID]=$cc;
+		}
+	}
+
+	echoResponse( $r );
+});
+
+//
+//	URL:	/api/v1/deparment/:departmentname
+//	Method:	PUT
+//	Params:
+//		Required: Name
+//		Optional: ExecSponsor, SDM, Classification, DeptColor
+//	Returns: record as created
+//
+$app->put( '/department/:departmentname', function($departmentname) use ($person) {
+	if ( ! $person->SiteAdmin ) {
+		$r['error'] = true;
+		$r['errorcode'] = 401;
+		$r['message'] = __("Access Denied");
+	} else {
+		$dept=new Department();
+		$vars = getParsedBody();
+
+		foreach( $vars as $prop=>$val ) {
+			if ( property_exists( $dept, $prop )) {
+				$dept->$prop = $val;
+			}
+		}
+		$dept->Name=$departmentname;
+
+		if(!$dept->CreateDepartment()){
+			$r['error']=true;
+			$r['errorcode']=400;
+			$r['message']=__("Error creating new department.");
+		}else{
+			$r['error']=false;
+			$r['errorcode']=200;
+			$r['message']=__("New department created successfully.");
+			$r['department'][$dept->DeptID]=$dept;
 		}
 	}
 

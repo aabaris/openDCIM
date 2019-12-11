@@ -9,6 +9,12 @@
 	require_once "vendor/autoload.php";
 
 	$person = People::Current();
+    
+    if(!$person->ReadAccess){
+        // No soup for you.
+        header('Location: '.redirect());
+        exit;
+    }
 
 	$workBook = new PHPExcel();
 	
@@ -29,7 +35,7 @@
     $objDrawing->setWorksheet($sheet);
     $objDrawing->setName("Logo");
     $objDrawing->setDescription("Logo");
-    $apath = __DIR__ . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR;
+    $apath = __DIR__ . DIRECTORY_SEPARATOR ;
     $objDrawing->setPath($apath . $config->ParameterArray['PDFLogoFile']);
     $objDrawing->setCoordinates('A1');
     $objDrawing->setOffsetX(5);

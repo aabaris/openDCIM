@@ -52,13 +52,13 @@ class DeviceAge extends Device
         $deviceList = array();
         if ($year <= 5) {
             $previous_year = $year - 1;
-            $selectSQL = sprintf("SELECT DeviceID, Label, Owner, MfgDate, PrimaryContact FROM fac_Device WHERE (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)<%d AND (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)>=%d ORDER BY Owner, MfgDate ASC, Label", $year, $previous_year);
+            $selectSQL = sprintf("SELECT * FROM fac_Device WHERE (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)<%d AND (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)>=%d ORDER BY Owner, MfgDate ASC, Label", $year, $previous_year);
             foreach ($dbh->query($selectSQL) as $deviceRow) {
                 $deviceList[$deviceRow['DeviceID']] = Device::RowToObject($deviceRow);
             }
         }
         else {
-            $selectSQL = "SELECT DeviceID, Label, Owner, MfgDate, PrimaryContact FROM fac_Device WHERE (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)>5 AND (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END)>'1970-01-01' ORDER BY Owner, MfgDate ASC, Label";
+            $selectSQL = "SELECT * FROM fac_Device WHERE (DATEDIFF(NOW(), (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END))/365)>5 AND (CASE WHEN MfgDate>'1969-12-31' THEN MfgDate ELSE InstallDate END)>'1970-01-01' ORDER BY Owner, MfgDate ASC, Label";
             foreach ($dbh->query($selectSQL) as $deviceRow) {
                 $deviceList[$deviceRow['DeviceID']] = Device::RowToObject($deviceRow);
             }
@@ -83,8 +83,8 @@ class PDF extends FPDF
 
     function Header() {
         $this->pdfconfig = new Config();
-        if ( file_exists( 'images/' . $this->pdfconfig->ParameterArray['PDFLogoFile'] )) {
-            $this->Image( 'images/' . $this->pdfconfig->ParameterArray['PDFLogoFile'],10,8,100);
+        if ( file_exists(  $this->pdfconfig->ParameterArray['PDFLogoFile'] )) {
+            $this->Image(  $this->pdfconfig->ParameterArray['PDFLogoFile'],10,8,100);
         }
         $this->SetFont($this->pdfconfig->ParameterArray['PDFfont'], 'B', 12);
         $this->Cell(120);

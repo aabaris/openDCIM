@@ -512,8 +512,8 @@ function InsertCoordsTable(front,btn){
 		append($('<div>')));
 
 	var front=(btn.prev('input').attr('id')=='ChassisSlots')?true:false;
-	var picture=(front)?$('#FrontPictureFile'):$('#RearPictureFile');
-	$(targetdiv+' #previewimage').html($('<img>').attr('src','pictures/'+picture.val()).width(400));
+	var picture=(front)?$('#img_FrontPictureFile'):$('#img_RearPictureFile');
+	$(targetdiv+' #previewimage').html($('<img>').attr('src',picture.prop('src')).width(400));
 
 	for(var i=1;i<=btn.prev('input').val(); i++){
 		table.append(CoordinateRow(i,front));
@@ -754,9 +754,9 @@ function buildpowerportstable(){
 		});
 		return test;
 	}
-	function reload(target){
+	function reload(imgdir,target){
 		$('#'+target).children().remove();
-		$.post('',{dir: target}).done(function(a){
+		$.post('',{dir: imgdir}).done(function(a){
 			$.each(a,function(dir,files){
 				$.each(files,function(i,file){
 					$('#'+target).append(makeThumb(dir,file));
@@ -1012,7 +1012,7 @@ function startmap(){
 			var row=false;
 			obj.ZoneID=0;
 		} else {
-			var label=obj.Location;
+			var label=obj.ShowCabinetLabel;
 			var name='cab'+obj.CabinetID;
 			var href='cabnavigator.php?cabinetid='+obj.CabinetID;
 			var row=obj.CabRowID==0?false:true;
@@ -1430,6 +1430,8 @@ $(document).ready(function(){
 						cabinetimagecontrols();
 						// clean up the loading animations from any empty cabinets
 						$('.cabinet .loadingplaceholder').remove();
+						// Everything has finished loading call initdrag
+						initdrag();
 					}
 				}, 10);
 			}
@@ -1731,7 +1733,13 @@ function InsertDevice(obj){
 			var stName=obj.Status.split(' ').join('_');
 			StartingU.find('.pos').addClass(stName);
 			$('#legend > .legenditem > span.'+stName).parent('div').removeClass('hide');
-			StartingU.find('.pos').addClass('dept'+obj.Owner);
+			if(obj.HalfDepth==1 && obj.BackSide==0){
+				StartingU.find('.pos:first-child').addClass('dept'+obj.Owner).addClass('damnit');
+			}else if(obj.HalfDepth==1 && obj.BackSide==1){
+				StartingU.find('.pos:last').addClass('dept'+obj.Owner).addClass('damnit');
+			}else{
+				StartingU.find('.pos').addClass('dept'+obj.Owner).addClass('damnit');
+			}
 			StartingU=StartingU.prev(); // move our pointer up a u
 		}
 	}

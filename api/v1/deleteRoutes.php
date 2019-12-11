@@ -18,6 +18,35 @@
   *
   **/
 
+//
+//     URL:    /api/v1/cabinet/:cabinetid
+//     Method: DELETE
+//     Params: cabinetid (passed in URL)
+//     Returns:  true/false on update operation
+//
+
+$app->delete( '/cabinet/:cabinetid', function( $cabinetid ) use($person) {
+	if ( ! $person->SiteAdmin ) {
+			$r['error'] = true;
+			$r['errorcode'] = 401;
+			$r['message'] = __("Access Denied");
+	} else {
+			$cab=new Cabinet();
+			$cab->CabinetID=$cabinetid;
+
+			if(!$cab->DeleteCabinet()){
+					$r['error']=true;
+					$r['errorcode']=404;
+					$r['message']=__("Failed to delete cabinet with CabinetID")." $cab->CabinetID";
+			}else{
+					$r['error']=false;
+					$r['errorcode']=200;
+			}
+	}
+
+	echoResponse( $r );
+});
+
 
 //
 //	URL:	/api/v1/powerport/:deviceid
@@ -28,7 +57,6 @@
 //	Returns:  true/false on update operation
 //
 
-// $app->delete( '/powerport/{deviceid}', function( Request $request, Response $response, $args ) use ($person) {
 $app->delete( '/powerport/:deviceid', function( $deviceid ) use ($app) {
 	$pp=new PowerPorts();
 	$pp->DeviceID=$deviceid;
@@ -118,7 +146,7 @@ $app->delete( '/colorcode/:colorid', function( $colorid ) use($person) {
 
 $app->delete( '/device/:deviceid', function( $deviceid ) {
 	$dev=new Device();
-	$dev->DeviceID=$args['deviceid'];
+	$dev->DeviceID=$deviceid;
 	
 	if(!$dev->GetDevice()){
 		$r['error']=true;

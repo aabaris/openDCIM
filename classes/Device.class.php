@@ -405,6 +405,7 @@ class Device {
 			Ports=$this->Ports, FirstPortNum=$this->FirstPortNum, TemplateID=$this->TemplateID, 
 			PowerSupplyCount=$this->PowerSupplyCount, ChassisSlots=$this->ChassisSlots, 
 			RearChassisSlots=$this->RearChassisSlots,ParentDevice=$this->ParentDevice,
+			AuditStamp=\"".date("Y-m-d", strtotime($this->AuditStamp))."\", 
 			MfgDate=\"".date("Y-m-d", strtotime($this->MfgDate))."\", 
 			InstallDate=\"".date("Y-m-d", strtotime($this->InstallDate))."\", 
 			WarrantyCo=\"$this->WarrantyCo\", Notes=\"$this->Notes\", 
@@ -754,6 +755,17 @@ class Device {
 			}
 		}
 
+		// SUT #1179 - User somehow managed to set the position to 0 while leaving
+		// a height set and the way we build the rack specifically to not show
+		// position zero these devices won't show on the rack so shove this up above
+		// the rack and make them fix it
+		if($this->Position==0 && $this->Height!=0){
+			$cab=new Cabinet();
+			$cab->CabinetID=$this->Cabinet;
+			$cab->GetCabinet();
+			$this->Position=$cab->CabinetHeight+1;
+		}
+
 		// Force all uppercase for labels
 		$this->Label=transform($this->Label);
 		$this->SerialNo=transform($this->SerialNo);
@@ -925,6 +937,11 @@ class Device {
 		// Update the device image cache
 		$updatethis=$this->WhosYourDaddy(true);
 		$updatethis->UpdateDeviceCache();
+
+		// Need to check if this device was a child and moved to a new parent
+		// if so then we need to use the $tmpDev to find it's parent and run the UpdateDeviceCache
+		// currently the device cache is getting updated with the new destination for the child
+		// but the previous location isn't creating a ghost until the full cache is rebuilt
 
 		(class_exists('LogActions'))?LogActions::LogThis($this,$tmpDev):'';
 		return true;
@@ -1131,7 +1148,7 @@ class Device {
 		if ( $Days == null ) {
 			$sql = "select * from fac_Device where Status='Reserved' order by InstallDate ASC";
 		} else {
-			$sql = sprintf( "select * from fac_Device where Status='Reserved' and InstallDate<=(CURDATE()+%d) ORDER BY InstallDate ASC", $Days );
+			$sql = sprintf( "select * from fac_Device where Status='Reserved' and InstallDate>=(CURDATE()-%d) ORDER BY InstallDate ASC", $Days );
 		}
 		
 		$devList = array();
@@ -1883,6 +1900,7 @@ class Device {
 		 * - Child devices shouldn't need to conform to the 1.75:19 ratio we use for devices 
 		 *		directly in a cabinet they will target the slot that they are inside
 		 */
+		global $config;
 		$resp="";
 		
 		$templ=new DeviceTemplate();
@@ -1900,9 +1918,9 @@ class Device {
 
 		// We'll only consider checking a rear image on a child if it is sitting on a shelf
 		if(($parentTempl->Model=='HTRAY' || $parentTempl->Model=='VTRAY') && $rear){
-			$picturefile="pictures/$templ->RearPictureFile";
+			$picturefile=$config->ParameterArray['picturepath'].$templ->RearPictureFile;
 		}else{
-			$picturefile="pictures/$templ->FrontPictureFile";
+			$picturefile=$config->ParameterArray['picturepath'].$templ->FrontPictureFile;
 		}
 		if (!file_exists($path.$picturefile)){
 			$picturefile="pictures/P_ERROR.png";
@@ -2060,7 +2078,7 @@ class Device {
 			$label="";
 			$resp.="\t\t<div class=\"dept$this->Owner $rotar\" style=\"left: ".number_format(round($left/$parentDetails->targetWidth*100,2),2,'.','')."%; top: ".number_format(round($top/$parentDetails->targetHeight*100,2),2,'.','')."%; width: ".number_format(round($width/$parentDetails->targetWidth*100,2),2,'.','')."%; height:".number_format(round($height/$parentDetails->targetHeight*100,2),2,'.','')."%;\">\n$clickable";
 //			if(($templ->FrontPictureFile!="" && !$rear) || ($templ->RearPictureFile!="" && $rear)){
-			if($picturefile!='pictures/'){
+			if($picturefile!=$config->ParameterArray['picturepath']){
 				// IMAGE
 				// this rotate should only happen for a horizontal slot with a vertical image
 				$rotateimage=($hor_slot && !$hor_blade)?" class=\"rotar_d rlt\"  style=\"height: ".number_format(round($width/$height*100,2),2,'.','')."%; left: 100%; width: ".number_format(round($height/$width*100,2),2,'.','')."%; top: 0; position: absolute;\"":"";
@@ -2105,6 +2123,7 @@ class Device {
 		return $resp;
 	}
 	function GetDevicePicture($rear=false,$targetWidth=220,$nolinks=false){
+		global $config;
 		// Just in case
 		$targetWidth=($targetWidth==0)?220:$targetWidth;
 		$rear=($rear==true || $rear==false)?$rear:true;
@@ -2116,12 +2135,13 @@ class Device {
 		$resp="";
 
 		if(($templ->FrontPictureFile!="" && !$rear) || ($templ->RearPictureFile!="" && $rear)){
-			$picturefile="pictures/";
+			$picturefile=$config->ParameterArray['picturepath'];
 			$path="";
 			if(preg_match('/api\//',str_replace(DIRECTORY_SEPARATOR, '/',getcwd()))){
 				$path="../../";
 			}
 			$picturefile.=($rear)?$templ->RearPictureFile:$templ->FrontPictureFile;
+			$picturefile=html_entity_decode($picturefile,ENT_QUOTES);
 			if (!file_exists($path.$picturefile)){
 				$picturefile="pictures/P_ERROR.png";
 			}
@@ -2327,9 +2347,13 @@ class Device {
 		global $dbh;
 
 		// If CabinetID isn't specified try to update all sensors for the system
-		$cablimit=(is_null($CabinetID))?"":" AND Cabinet=$cab->CabinetID";
-		$sql="SELECT DeviceID FROM fac_Device WHERE DeviceType=\"Sensor\" AND 
-			PrimaryIP!=\"\" AND TemplateID>0 AND SNMPFailureCount<3$cablimit;";
+		$cablimit=(is_null($CabinetID))?"":" AND a.Cabinet=$cab->CabinetID";
+		$sql="SELECT a.DeviceID, b.DataCenterID, a.Cabinet, b.Location, a.BackSide, c.Name FROM fac_Device a, fac_Cabinet b, fac_DataCenter c WHERE 
+			DeviceType=\"Sensor\" AND PrimaryIP!=\"\" AND TemplateID>0 AND SNMPFailureCount<3 AND a.Cabinet=b.CabinetID AND
+			b.DataCenterID=c.DataCenterID $cablimit order by c.Name ASC, b.Location ASC;";
+
+		$AlertList = "";
+		$htmlMessage = "";
 
 		foreach($dbh->query($sql) as $row){
 			if(!$dev=Device::BasicTests($row['DeviceID'])){
@@ -2383,6 +2407,85 @@ class Device {
 
 				error_log( "UpdateSensors::PDO Error: {$info[2]} SQL=$insertsql" );
 				return false;
+			}
+
+			// Ignore rear sensors
+			if ( $row['BackSide'] == 0 && $config->ParameterArray["SensorAlertsEmail"] == "enabled" ) {
+				if ( $temp >= $config->ParameterArray["TemperatureRed"] ) {
+					$AlertList .= sprintf( "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $row["Name"], $row["Location"], __("Temperature"), $temp, __("Critical"));
+				} elseif ( $temp >= $config->ParameterArray["TemperatureYellow"] ) {
+					$AlertList .= sprintf( "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $row["Name"], $row["Location"], __("Temperature"), $temp, __("Warning"));
+				}
+
+				if ( ( $humidity >= $config->ParameterArray["HumidityRedHigh"] ) || ( $humidity <= $config->ParameterArray["HumidityRedLow"] ) ) {
+					$AlertList .= sprintf( "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $row["Name"], $row["Location"], __("Humidity"), $temp, __("Critical"));
+				} elseif ( ( $humidity >= $config->ParameterArray["HumidityYellowHigh"] ) || ( $humidity <= $config->ParameterArray["HumidityYellowLow"] ) ) {
+					$AlertList .= sprintf( "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", $row["Name"], $row["Location"], __("Humidity"), $temp, __("Warning"));
+				}
+			}
+		}
+
+		if ( $config->ParameterArray["SensorAlertsEmail"] == "enabled" && $AlertList != "" ) {
+			// If any port other than 25 is specified, assume encryption and authentication
+			if($config->ParameterArray['SMTPPort']!= 25){
+				$transport=Swift_SmtpTransport::newInstance()
+					->setHost($config->ParameterArray['SMTPServer'])
+					->setPort($config->ParameterArray['SMTPPort'])
+					->setEncryption('ssl')
+					->setUsername($config->ParameterArray['SMTPUser'])
+					->setPassword($config->ParameterArray['SMTPPassword']);
+			}else{
+				$transport=Swift_SmtpTransport::newInstance()
+					->setHost($config->ParameterArray['SMTPServer'])
+					->setPort($config->ParameterArray['SMTPPort']);
+			}
+
+			$mailer = Swift_Mailer::newInstance($transport);
+			$message = Swift_Message::NewInstance()->setSubject( __("Data Center Sensor Alerts Report" ) );
+
+			// Set from address
+			try{		
+				$message->setFrom($config->ParameterArray['MailFromAddr']);
+			}catch(Swift_RfcComplianceException $e){
+				$error.=__("MailFrom").": <span class=\"errmsg\">".$e->getMessage()."</span><br>\n";
+			}
+
+			// Add data center team to the list of recipients
+			try{		
+				$message->addTo($config->ParameterArray['FacMgrMail']);
+			}catch(Swift_RfcComplianceException $e){
+				$error.=__("Facility Manager email address").": <span class=\"errmsg\">".$e->getMessage()."</span><br>\n";
+			}
+
+			$logofile=getcwd().'/'.$config->ParameterArray["PDFLogoFile"];
+			$logo=$message->embed(Swift_Image::fromPath($logofile)->setFilename($logofile));
+				
+			$style = "
+<style type=\"text/css\">
+@media print {
+	h2 {
+		page-break-before: always;
+	}
+}
+</style>";
+
+
+			$htmlMessage = sprintf( "<!doctype html><html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><title>%s</title>%s</head><body><div id=\"header\" style=\"padding: 5px 0;background: %s;\"><center><img src=\"%s\"></center></div><div class=\"page\"><p>\n", __("Data Center Sensor Alerts"), $style, $config->ParameterArray["HeaderColor"], $logo  );
+
+			$htmlMessage .= sprintf( "<table>\n<tr><th>%s</th><th>%s</th><th>%s</th><th>%s</th><th>%s</th></tr>\n", __("Data Center"), __("Cabinet"), __("Sensor"), __("Value"), __("Alert Level") );
+
+
+			// Add the alerts to the html message, now
+			$htmlMessage .= $AlertList . "</table>\n";;
+
+			$message->setBody($htmlMessage,'text/html');
+
+			try {
+				$result = $mailer->send( $message );
+			} catch( Swift_RfcComplianceException $e) {
+				$error .= "Send: " . $e->getMessage() . "<br>\n";
+			} catch( Swift_TransportException $e) {
+				$error .= "Server: <span class=\"errmsg\">" . $e->getMessage() . "</span><br>\n";
 			}
 		}
 

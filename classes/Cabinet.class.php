@@ -35,6 +35,7 @@ class Cabinet {
 	var $Location;
 	var $LocationSortable;
 	var $AssignedTo;
+	var $ShowCabinetLabel;
 	var $ZoneID;
 	var $CabRowID;      //JMGA: Row of this cabinet
 	var $CabinetHeight;
@@ -107,6 +108,19 @@ class Cabinet {
 		$cab->FrontEdge=$dbRow["FrontEdge"];
 		$cab->Notes=$dbRow["Notes"];
 		$cab->U1Position=$dbRow["U1Position"];
+		
+	    global $config;
+	    if($config->ParameterArray["AssignCabinetLabels"]=="OwnerName"){
+	    $cab->DeptID=$dbRow["AssignedTo"];
+	    $dept = new Department();
+	    $dept->GetDeptByID();
+	    $cab->ShowCabinetLabel=$dept->Name;}
+
+	    if($config->ParameterArray["AssignCabinetLabels"]=="KeyLockInformation"){
+	       $cab->ShowCabinetLabel=$dbRow["Keylock"]; }
+
+	    if($config->ParameterArray["AssignCabinetLabels"]=="ModelNo"){
+	       $cab->ShowCabinetLabel=$dbRow["Model"];  }
 
 		if($filterrights){
 			$cab->FilterRights();
@@ -119,7 +133,13 @@ class Cabinet {
 			$dc=$_SESSION['datacenters'][$cab->DataCenterID];
 			if($dc->U1Position=="Default"){
 				global $config;
-				$cab->U1Position=$config->ParameterArray["U1Position"];
+				if($config->ParameterArray["U1Position"]!=""){
+					$cab->U1Position=$config->ParameterArray["U1Position"];
+				}else{
+					# If for some crazy reason the config value for the U1 position isn't set
+					# then just assume bottom
+					$cab->U1Position="Bottom";
+				}
 			}else{
 				$cab->U1Position=$dc->U1Position;
 			}
@@ -281,12 +301,13 @@ class Cabinet {
 
 	function GetCabinetsByDept(){
 		global $dbh;
+		global $config;
 
 		$this->MakeSafe();
 
 		$cabinetList = array();
 
-		$sql = "select * from fac_Cabinet where AssignedTo='" . $this->AssignedTo . "'";
+		$sql = "select * from fac_Cabinet where AssignedTo='" . $this->DeptID . "'";
 		foreach( $dbh->query($sql) as $cabinetRow){
 			$filter = $config->ParameterArray["FilterCabinetList"] == 'Enabled' ? true:false;
 			$cabinetList[]=Cabinet::RowToObject($cabinetRow, $filter);		

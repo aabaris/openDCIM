@@ -28,7 +28,13 @@ if (!$auth->isAuthenticated()) {
 	exit();
 }
 
-if ($samlResponse->isValid()) {
+// Get and clear the SAML authRequest ID to validate the response is related
+if (isset($_SESSION['saml_req_id'])) {
+	$saml_reqID = $_SESSION['saml_req_id'];
+	unset($_SESSION['saml_req_id']);
+}
+
+if ($samlResponse->isValid($saml_reqID)) {
 	$check_username = $samlResponse->getNameId();
 	$attributes = $samlResponse->getAttributes();
 	if (!empty($attributes)) {
@@ -50,7 +56,7 @@ if ($samlResponse->isValid()) {
 	$userid = $check_username;
 
         if ($config->ParameterArray["SAMLShowSuccessPage"] == 'disabled') {
-		header('Location: ..');
+		header('Location: ' .$_POST['RelayState']);
 	}
 	$success = true;
 } else {
@@ -62,7 +68,7 @@ if ($samlResponse->isValid()) {
 ?>
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
-<?php echo ($config->ParameterArray["SAMLShowSuccessPage"]=='enabled' ? '<meta http-equiv="refresh" content="2;url=..">' : '') 
+<?php echo ($config->ParameterArray["SAMLShowSuccessPage"]=='enabled' ? '<meta http-equiv="refresh" content="2;url='.$_POST['RelayState'].'">' : '') 
 ?>
 <head>
 <title>SAML client results</title>

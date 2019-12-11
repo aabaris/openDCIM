@@ -101,7 +101,7 @@
 				$tests['db.inc']['message']="db.inc.php has been detected and in the proper place";
 				require_once("db.inc.php");
 				// check for strict_trans_tables
-				if(strpos(@end($dbh->query("select @@global.sql_mode;")->fetch()),'STRICT_TRANS_TABLES') === false){
+				if(strpos(@end($dbh->query("select @@session.sql_mode;")->fetch()),'STRICT_TRANS_TABLES') === false){
 					$tests['strictdb']['state']="good";
 					$tests['strictdb']['message']='';
 				}else{
@@ -130,7 +130,7 @@
 		}
 	}else{
 		$tests['pdo']['state']="fail";
-		$tests['pdo']['message']='openDCIM requires the <a href="http://php.net/manual/pdo.installation.php">PDO extention</a> and you do not appear to have it loaded';
+		$tests['pdo']['message']='openDCIM requires the <a href="http://php.net/manual/pdo.installation.php">PDO extension</a> and you do not appear to have it loaded';
 		$tests['pdodrivers']['state']="fail";
 		$tests['pdodrivers']['message']='No PDO drivers have been detected';
 		$errors++;
@@ -147,27 +147,8 @@
 			}else{
 				$tests['Remote User']['message']='<a href="http://httpd.apache.org/docs/2.2/howto/auth.html">http://httpd.apache.org/docs/2.2/howto/auth.html</a>';
 			}
-		}elseif(AUTHENTICATION=="Oauth"){
-			if(isset($_SESSION['userid'])){
-				$tests['Remote User']['state']="good";
-				$tests['Remote User']['message']='Authenticated as UserID='.$_SESSION['userid'];
-			}else{
-				$tests['Remote User']['message']='Click <a href="oauth/login.php">here</a> to authenticate via Oauth';
-			}
-		}elseif(AUTHENTICATION=="Saml"){
-			if(isset($_SESSION['userid'])){
-				$tests['Remote User']['state']="good";
-				$tests['Remote User']['message']='Authenticated as UserID='.$_SESSION['userid'];
-			}else{
-				$tests['Remote User']['message']='Click <a href="saml/login.php">here</a> to authenticate via Saml';
-			}
-		}elseif(AUTHENTICATION=="LDAP") {
-			if(isset($_SESSION['userid'])){
-				$tests['Remote User']['state']="good";
-				$tests['Remote User']['message']='Authenticated as UserID='.$_SESSION['userid'];
-			}else{
-				header("Location: ldap_bootstrap.php" );
-			}
+		}else{
+			$tests['Remote User']['message']='Only Apache authentication is supported for the initial install. Please use the provided .htaccess to authenticate as admin OR supply your own apache password file';
 		}
 		// Try to not duplicate everything
 		if(!isset($tests['Remote User']['state'])){
@@ -182,7 +163,7 @@
 
 	// Do a quick check for file rights.
 	$all_paths_writable=true;
-	$wantedpaths=array('pictures','drawings','vendor'.DIRECTORY_SEPARATOR.'mpdf'.DIRECTORY_SEPARATOR.'mpdf'.DIRECTORY_SEPARATOR.'ttfontdata');
+	$wantedpaths=array('drawings', 'pictures','vendor'.DIRECTORY_SEPARATOR.'mpdf'.DIRECTORY_SEPARATOR.'mpdf'.DIRECTORY_SEPARATOR.'ttfontdata');
 
 	foreach($wantedpaths as $i => $file){
 		$all_paths_writable=(is_writable('.'.DIRECTORY_SEPARATOR.$file) && $all_paths_writable)?true:false;
@@ -244,7 +225,7 @@
 		$errors++;
 	}
 	if ($errors >0 || !isset($_GET['preflight-ok'])) {
-        echo '<!doctype html><html><head><title>openDCIM :: pre-flight environment sanity check</title><script type="text/javascript" src="scripts/jquery.min.js"></script><style type="text/css">table{width:80%;border-collapse:collapse;border:3px solid black;}th{text-align:left;text-transform:uppercase;border-right: 1px solid black;}th,td{padding:5px;}tr:nth-child(even){background-color:#d1e1f1;}td:last-child{text-align:center;text-transform:uppercase;border:2px solid;background-color:green;}.fail td:last-child{font-weight: bold;background-color: red;}.hide{display: none;}</style></head><body><h2>Pre-flight environment checks</h2><table>';
+        echo '<!doctype html><html><head><title>openDCIM :: pre-flight environment sanity check</title><script type="text/javascript" src="scripts/jquery.min.js"></script><style type="text/css">table{width:80%;border-collapse:collapse;border:3px solid black;}th{text-align:left;text-transform:uppercase;border-right: 1px solid black;}th,td{padding:5px;}tr:nth-child(even){background-color:#d1e1f1;}td:last-child{text-align:center;text-transform:uppercase;border:2px solid;background-color:green;}.fail td:last-child{font-weight: bold;background-color: red;}.hide{display: none;}</style></head><body><span id="sped"><a href="https://wiki.opendcim.org/wiki/index.php/System_Requirements" target="_blank">System Requirements</a> | <a href="https://wiki.opendcim.org/wiki/index.php/Installation" target="_blank">Installation Guide</a></span><table>';
 		foreach($tests as $test => $text){
 			$hide=($test=='api_test')?' class="hide"':'';
 			print "<tr id=\"$test\"$hide><th>$test</th><td>{$text['message']}</td><td>{$text['state']}</td></tr>";

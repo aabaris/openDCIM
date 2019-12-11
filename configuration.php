@@ -14,6 +14,42 @@
 		exit;
 	}
 
+	function BuildDirectoryList($returnjson=false,$path="."){
+		$path=trim($path);
+		# Make sure we don't have any path shenanigans going on
+		$path=str_replace(array("..","./"),"",$path);
+		# we don't need trailing slashes, and leading slashes are going to be invalid paths
+		$path=trim($path,"/");
+		# if path is empty revert to the current directory
+		$path=($path)?$path:'.';
+		$here=end(explode(DIRECTORY_SEPARATOR,getcwd()));
+		$breadcrumb="<a href=\"?dl=\">$here</a>/";
+		$breadcrumbpath="";
+		if($path!='.'){
+			foreach(explode("/",$path) as $i => $d) {
+				$breadcrumb.="<a href=\"?dl=$breadcrumbpath$d\">$d</a>/";
+				$breadcrumbpath.="$d/";
+			}
+		}
+		$imageselect=__("Current selection").': '.$breadcrumb.'<br><input type="hidden" id="directoryselectionvalue" value="'.$breadcrumbpath.'"><div id="filelist">';
+
+		$directoriesonly=array();
+		$dir=scandir($path);
+		foreach($dir as $i => $f){
+			if(is_dir($path.DIRECTORY_SEPARATOR.$f) && $f!="." && $f!=".." && !preg_match('/^\./', $f)){
+				$imageselect.="<a href=\"?dl=$path/$f\"><span data=\"$breadcrumbpath$f\">$f</span></a><br>\n";
+				$filesonly[]=$f;
+			}
+		}
+		$imageselect.="</div>";
+		if($returnjson){
+			header('Content-Type: application/json');
+			echo json_encode($filesonly);
+		}else{
+			return $imageselect;
+		}
+	}
+
 	function BuildFileList($returnjson=false){
 		$imageselect='<div id="preview"></div><div id="filelist">';
 
@@ -39,6 +75,10 @@
 	}
 
 	// AJAX Requests
+	if(isset($_GET['dl'])){
+		echo BuildDirectoryList(isset($_GET['json']),$_GET['dl']);
+		exit;
+	}
 	if(isset($_GET['fl'])){
 		echo BuildFileList(isset($_GET['json']));
 		exit;
@@ -236,6 +276,7 @@
 		$i++;
 	}
 
+	$directoryselect=BuildDirectoryList();
 	$imageselect=BuildFileList();
 
 	function formatOffset($offset) {
@@ -418,6 +459,47 @@
   <script type="text/javascript" src="scripts/jquery.validationEngine-en.js"></script>
   <script type="text/javascript" src="scripts/jquery.validationEngine.js"></script>
   <script type="text/javascript">
+	function binddirectoryselection() {
+		$("#directoryselection a").each(function(){
+			$(this).click(function(e){
+				e.preventDefault();
+				$.get(this.href).done(function(data){
+					$("#directoryselection").html(data);
+					binddirectoryselection();
+				});
+			});
+		});
+	}
+
+	// fix this to trigger after the drawing path has been updated
+	function rebuildcache(){
+		$('<div>').append($('<iframe>').attr('src','build_image_cache.php').css({'max-width':'600px','max-height':'400px','min-height':'300px','align':'middle'})).attr('title','Rebuild device image cache').dialog({
+			width: 'auto',
+			modal: true,
+			open: function(e){
+				thismodal=this;
+				timer = setInterval( function() {
+					$.ajax({
+						type: 'GET',
+						url: 'scripts/ajax_progress.php',
+						dataType: 'json',
+						success: function(data) {
+							if ( data.Percentage >= 100 ) {
+								clearInterval(timer);
+								// wait 5 seconds after the rebuild completes and autoclose this dialog
+								timer = setInterval( function() {
+									$(thismodal).dialog('destroy');
+									clearInterval(timer);
+								}, 5000 );
+								// Reload with Stage 3 to send the file to the user
+							}
+						}
+					})
+				}, 1500 );
+			}
+		});
+	};
+	
 	$(document).ready(function(){
 		// ToolTips
 		$('#tooltip, #cdutooltip').multiselect();
@@ -425,6 +507,17 @@
 			if($(this).attr('data')){
 				$(this).val($(this).attr('data'));
 			}
+		});
+
+		// Email test
+		$('#btn_smtptest').click(function(e) {
+			e.preventDefault();
+
+			var formdata=$('#smtpblock').serializeArray();
+			$.post( 'scripts/testemail.php', formdata, function(data) {
+				$('#smtptest > div').html(data);
+				$('#smtptest').dialog({minWidth: 850, position: { my: "center", at: "top", of: window },closeOnEscape: true });
+			});
 		});
 
 		// Applies to everything
@@ -448,7 +541,19 @@
 		$("#configtabs button").each(function(){
 			var a = $(this).parent().prev().find('input,select');
 			$(this).click(function(){
-				a.val($(this).parent().next().children('span').text());
+				
+				var value_to_set = $(this).parent().next().children('span').text();
+
+				// Only for selects, try to assign an existing option, so to avoid to default to an empty value that cannot be saved
+				if (a.is("select")){
+					a.find('option').each(function (){
+						if ($(this).val().toLowerCase() === value_to_set.toLowerCase()){
+							value_to_set = $(this).val();
+						}
+					});
+				}
+				a.val(value_to_set).trigger('change');
+
 				if(a.hasClass('color-picker')){
 					a.minicolors('value', $(this).parent().next().children('span').text()).trigger('change');
 				}
@@ -545,6 +650,40 @@
 		$('#SNMPCommunity,#v3AuthPassphrase,#v3PrivPassphrase')
 			.focus(function(){$(this).attr('type','text');})
 			.blur(function(){$(this).attr('type','password');});
+
+		// General - Site Specific Paths
+
+		$('#drawingpath, #picturepath, #reportspath').click(function(){
+			var input=this;
+			var originalvalue=this.value;
+			$.get('',{dl: this.value}).done(function(data){
+				$("#directoryselection").html(data);
+				$("#directoryselection").dialog({
+					resizable: false,
+					height:500,
+					width: 670,
+					modal: true,
+					buttons: {
+	<?php echo '					',__("Select"),': function() {'; ?>
+							input.value=$('#directoryselectionvalue').val();
+							$(input).trigger('change');
+							$(this).dialog("destroy");
+						}
+					},
+					close: function(){
+							// they clicked the x, set the value back if something was uploaded
+							input.value=originalvalue;
+							$(this).dialog("destroy");
+						}
+				}).data('input',input);
+				binddirectoryselection();
+			});
+		}).on('change',function(e){
+			if(e.currentTarget.id=='picturepath'){
+				window.picturepathupdated=true;
+			}
+			$(".main form").validationEngine('validate');
+		});
 
 		// General - Time and Measurements
 
@@ -653,7 +792,6 @@
 			});
 
 			$('.main form').validationEngine();
-
 		}
 
 		var blankmediarow=$('<div />').html('<div><img src="images/del.gif"></div><div><input id="mediatype[]" name="mediatype[]" type="text"></div><div><select name="mediacolorcode[]"></select></div>');
@@ -1369,16 +1507,31 @@
 
 		// Convert this bitch over to an ajax form submit
 		$('button[name="action"]').click(function(e){
-			// Clear the messages blank
-			$('#messages').text('');
-			// Don't let this button do a real form submit
-			e.preventDefault();
-			// Collect the config data
-			var formdata=$(".main form").serializeArray();
-			// Set the action of the form to Update
-			formdata.push({name:'action',value:"Update"});
-			// Post the config data then update the status message
-			$.post('',formdata).done(function(){$('#messages').text('Updated');}).error(function(){$('#messages').text('Something is broken');});
+			if($(".main form").validationEngine('validate')){
+				// Clear the messages blank
+				$('#messages').text('');
+				// Don't let this button do a real form submit
+				e.preventDefault();
+				// Collect the config data
+				var formdata=$(".main form").serializeArray();
+				// Set the action of the form to Update
+				formdata.push({name:'action',value:"Update"});
+				// Post the config data then update the status message
+				$.post('',formdata).done(function(){
+						$('#messages').text('Updated');
+						if(typeof(window.picturepathupdated)==="boolean"){
+							if(window.picturepathupdated){
+								$('#messages').text("<?php echo __("Verify directory rights");?>");
+								$('a[href=#preflight]').trigger('click');
+								window.scrollTo(0,0);
+								rebuildcache();
+								window.picturepathupdated=false;
+							}
+						}
+					}).error(function(){
+						$('#messages').text('Something is broken');
+					});
+			}
 		});
 
 		$('.main form').submit(function(e){
@@ -1472,6 +1625,7 @@
 			}
 		});
 	}
+
   </script>
 </head>
 <body>
@@ -1515,11 +1669,35 @@ echo '<div class="main">
 					<div><input type="text" defaultvalue="',$config->defaults["DefaultPanelVoltage"],'" name="DefaultPanelVoltage" value="',$config->ParameterArray["DefaultPanelVoltage"],'"></div>
 				</div>
 			</div> <!-- end table -->
+			<h3>',__("Site Specific Paths"),'</h3>
+			<div id="directoryselection" title="Image file directory selector">
+				',$directoryselect,'
+			</div>
+			<div class="table" id="sitepaths">
+				<div>
+					<div><label for="drawingpath">',__("Relative path for Drawings"),'</label></div>
+					<div><input type="text" id="drawingpath" defaultvalue="',$config->defaults["drawingpath"],'" name="drawingpath" value="',$config->ParameterArray["drawingpath"],'" class="validate[required,custom[endWithSlashConfigurationPage]]"></div>
+				</div>
+				<div>
+					<div><label for="picturepath">',__("Relative path for Pictures"),'</label></div>
+					<div><input type="text" id="picturepath" defaultvalue="',$config->defaults["picturepath"],'" name="picturepath" value="',$config->ParameterArray["picturepath"],'" class="validate[required,custom[endWithSlashConfigurationPage]]">
+					</div>
+				</div>
+				<div>
+					<div><label for="reportspath">',__("Relative path for Local/Custom Reports"),'</label></div>
+					<div><input type="text" id="reportspath" defaultvalue="',$config->defaults["reportspath"],'" name="reportspath" value="',$config->ParameterArray["reportspath"],'" class="validate[required,custom[endWithSlashConfigurationPage]]">
+					</div>
+				</div>
+			</div> <!-- end table -->			
 			<h3>',__("Time and Measurements"),'</h3>
 			<div class="table" id="timeandmeasurements">
 				<div>
 					<div><label for="timezone">',__("Time Zone"),'</label></div>
 					<div><input type="text" readonly="readonly" id="timezone" defaultvalue="',$config->defaults["timezone"],'" name="timezone" value="',$config->ParameterArray["timezone"],'"></div>
+				</div>
+				<div>
+					<div><label for="logretention">',__("Log Retention (Days)"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["logretention"],'" name="logretention" value="',$config->ParameterArray["logretention"],'"></div>
 				</div>
 				<div>
 					<div><label for="mDate">',__("Manufacture Date"),'</label></div>
@@ -1627,11 +1805,14 @@ echo '<div class="main">
 					<div><input type="text" defaultvalue="',$config->defaults["RCILow"],'" name="RCILow" value="',$config->ParameterArray["RCILow"],'"></div>
 				</div>
 			</div> <!-- end table -->
-			<h3>',__("Virtual Machines"),'</h3>
+			<h3>',__("Expirations"),'</h3>
 			<div class="table" id="rackusage">
 				<div>
-					<div><label for="VMExpirationTime">',__("Expiration Time (Days)"),'</label></div>
+					<div><label for="VMExpirationTime">',__("Unseen Virtual Machines (Days)"),'</label></div>
 					<div><input type="text" defaultvalue="',$config->defaults["VMExpirationTime"],'" name="VMExpirationTime" value="',$config->ParameterArray["VMExpirationTime"],'"></div>
+					<div></div>
+					<div><label for="ReservationExpiration">',__("Uninstalled Reservations (Days)"),'</label></div>
+					<div><input type="text" defaultValue="',$config->defaults["ReservationExpiration"],'" name="ReservationExpiration" value="',$config->ParameterArray["ReservationExpiration"],'"></div>
 				</div>
 			</div> <!-- end table -->
 			',$tzmenu,'
@@ -1663,6 +1844,14 @@ echo '<div class="main">
 				<div>
 					<div><label for="RackRequests">',__("Rack Requests"),'</label></div>
 					<div><select id="RackRequests" name="RackRequests" defaultvalue="',$config->defaults["RackRequests"],'" data="',$config->ParameterArray["RackRequests"],'">
+							<option value="disabled">',__("Disabled"),'</option>
+							<option value="enabled">',__("Enabled"),'</option>
+						</select>
+					</div>
+				</div>
+				<div>
+					<div><label for="RackRequestsActions">',__("Rack Requests Actions"),'</label></div>
+					<div><select id="RackRequestsActions" name="RackRequestsActions" defaultvalue="',$config->defaults["RackRequestsActions"],'" data="',$config->ParameterArray["RackRequestsActions"],'">
 							<option value="disabled">',__("Disabled"),'</option>
 							<option value="enabled">',__("Enabled"),'</option>
 						</select>
@@ -1774,6 +1963,17 @@ echo '<div class="main">
 						</select>
 					</div>
 				</div>
+                                 <div>
+					<div><label for="AssignCabinetLabels">',__("Which Cabinet Label?"),'</label></div>
+					<div><select id="AssignCabinetLabels" name="AssignCabinetLabels" defaultvalue="',$config->defaults["AssignCabinetLabels"],'" data="',$config->ParameterArray["AssignCabinetLabels"],'">
+
+							<option value="OwnerName">',__("Owner Name"),'</option>
+							<option value="KeyLockInformation">',__("Key Lock Information"),'</option>
+							<option value="ModelNo">',__("Model No"),'</option> 
+						</select>
+					</div>
+				</div>
+				
 			</div> <!-- end table -->
 			<h3>',__("Site"),'</h3>
 			<div class="table">
@@ -1804,6 +2004,7 @@ echo '<div class="main">
 			</div> <!-- end table -->
 		</div>
 		<div id="email">
+		    <fieldset id="smtpblock">
 			<div class="table">
 				<div>
 					<div><label for="SMTPServer">',__("SMTP Server"),'</label></div>
@@ -1841,7 +2042,31 @@ echo '<div class="main">
 					<div><label for="FacMgrMail">',__("Facility Manager Email"),'</label></div>
 					<div><input type="text" defaultvalue="',$config->defaults["FacMgrMail"],'" name="FacMgrMail" value="',$config->ParameterArray["FacMgrMail"],'"></div>
 				</div>
+				<div>
+					<div></div>
+					<div><button type="button" id="btn_smtptest" style="display; inline-block">',__("Test Settings"),'</button></div>
+				</div>
+				<div id="smtptest" title="Testing SMTP Communications"><div></div></div>
 			</div> <!-- end table -->
+			</fieldset>
+			<div class="table">
+				<div>
+					<div><label for="PowerAlertsEmail">',__("Email Alerts on Power Poll"),'</label></div>
+					<div><select id="PowerAlertsEmail" name="PowerAlertsEmail" defaultvalue="',$config->defaults["PowerAlertsEmail"],'" data="',$config->ParameterArray["PowerAlertsEmail"],'">
+							<option value="disabled">',__("Disabled"),'</option>
+							<option value="enabled">',__("Enabled"),'</option>
+						</select>
+					</div>
+				</div>
+				<div>
+					<div><label for="SensorAlertsEmail">',__("Email Alerts on Sensor Poll"),'</label></div>
+					<div><select id="SensorAlertsEmail" name="SensorAlertsEmail" defaultvalue="',$config->defaults["SensorAlertsEmail"],'" data="',$config->ParameterArray["SensorAlertsEmail"],'">
+							<option value="disabled">',__("Disabled"),'</option>
+							<option value="enabled">',__("Enabled"),'</option>
+						</select>
+					</div>
+				</div>
+			</div>
 		</div>
 		<div id="reporting">
 			<div id="imageselection" title="Image file selector">
@@ -2105,11 +2330,11 @@ echo '<div class="main">
 				</div>
 				<div>
 					<div><label for="LDAPBaseSearch">',__("Base Search"),'</label></div>
-					<div><input type="text" defaultvalue="',$config->defaults["LDAPBaseSearch"],'" name="LDAPBaseSearch" value="',$config->ParameterArray["LDAPBaseSearch"],'"></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPBaseSearch"],'" name="LDAPBaseSearch" value="',$config->ParameterArray["LDAPBaseSearch"],'" title="',__("Leave blank for Active Directory"),'"></div>
 				</div>
 				<div>
 					<div><label for="LDAPBindDN">',__("Bind DN"),'</label></div>
-					<div><input type="text" defaultvalue="',$config->defaults["LDAPBindDN"],'" name="LDAPBindDN" value="',$config->ParameterArray["LDAPBindDN"],'"></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPBindDN"],'" name="LDAPBindDN" value="',$config->ParameterArray["LDAPBindDN"],'" title="%userid%@opendcim.org for Active Directory"></div>
 				</div>
 				<div>
 					<div><label for="LDAPUserSearch">',__("User Search"),'</label></div>
@@ -2117,8 +2342,47 @@ echo '<div class="main">
 				</div>
 				<div>
 					<div><label for="LDAPSessionExpiration">',__("LDAP Session Expiration (Seconds)"),'</label></div>
-			<div><input type="text" defaultvalue="',$config->defaults["LDAPSessionExpiration"],'" name="LDAPSessionExpiration" value="',$config->ParameterArray["LDAPSessionExpiration"],'"></div>
-		</div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPSessionExpiration"],'" name="LDAPSessionExpiration" value="',$config->ParameterArray["LDAPSessionExpiration"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPDebug">',__("LDAP Debugging"),'</label></div>
+					<div><select id="LDAPDebug" name="LDAPDebug" defaultValue="',$config->defaults["LDAPDebug"],'" data="', $config->ParameterArray["LDAPDebug"],'">
+							<option value="disabled">',__("Disabled"),'</option>
+							<option value="enabled">',__("Enabled"),'</option>
+						</select>
+					</div>
+				</div>
+				<div>
+					<div><label for="LDAP_Debug_Password">',__("Emergency Bypass Password"),'</label></div>
+					<div><input type="password" defaultvalue="',$config->defaults["LDAP_Debug_Password"],'" name="LDAP_Debug_Password" value="',$config->ParameterArray["LDAP_Debug_Password"],'"></div>
+				</div>
+			</div>
+			<h3>',__("User Attributes"),'</h3>
+			<div class="table">
+				<div>
+					<div><label for="LDAPFirstName">',__("First Name"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPFirstName"],'" name="LDAPFirstName" value="',$config->ParameterArray["LDAPFirstName"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPLastName">',__("Last Name"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPLastName"],'" name="LDAPLastName" value="',$config->ParameterArray["LDAPLastName"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPEmail">',__("Email"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPEmail"],'" name="LDAPEmail" value="',$config->ParameterArray["LDAPEmail"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPPhone1">',__("Phone1"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPPhone1"],'" name="LDAPPhone1" value="',$config->ParameterArray["LDAPPhone1"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPPhone2">',__("Phone2"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPPhone2"],'" name="LDAPPhone2" value="',$config->ParameterArray["LDAPPhone2"],'"></div>
+				</div>
+				<div>
+					<div><label for="LDAPPhone3">',__("Phone3"),'</label></div>
+					<div><input type="text" defaultvalue="',$config->defaults["LDAPPhone3"],'" name="LDAPPhone3" value="',$config->ParameterArray["LDAPPhone3"],'"></div>
+				</div>
 			</div>
 			<h3>',__("Group Distinguished Names"),'</h3>
 			<div class="table">

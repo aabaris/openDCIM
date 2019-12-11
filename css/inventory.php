@@ -93,7 +93,7 @@ textarea {white-space: pre;word-wrap: break-word;}
 /*  Header/logo */
 #header{
 	padding:5px 0;
-	background:<?php echo $config->ParameterArray['HeaderColor']; ?> url(../images/<?php echo $config->ParameterArray['PDFLogoFile']; ?>) no-repeat left center;
+	background:<?php echo $config->ParameterArray['HeaderColor']; ?> url(../<?php echo $config->ParameterArray['PDFLogoFile']; ?>) no-repeat left center;
 	height:66px;
 	position: relative;
 }
@@ -121,6 +121,21 @@ div.cp { position: relative;}
 #configtabs #email div > input {width: 20em; }
 
 #configtabs #reporting div:first-child + div > input {width: 20em; }
+
+div#directoryselection { display: none;}
+#directoryselection #filelist { position: absolute; top: 30px; left: 1em; height: 380px; width: 245px; overflow-y: scroll; overflow-x: hidden; white-space: nowrap;}
+#directoryselection #filelist a { line-height: 1.5em; }
+#directoryselection #filelist a::before {
+	display: inline-block;
+	background-image: url(../images/folder.gif);
+	content: '';
+	background-size: 1.5em;
+	height: 1.75em;
+	width: 1.5em;
+	padding-right: 5px;
+	margin-bottom: -5px;
+	background-repeat: no-repeat;
+}
 
 div#imageselection { display: none;}
 #imageselection span { display: block; padding: 0.25em 0 0.5em 0.5em; cursor: pointer; text-decoration: underline; border: 1px solid white;}
@@ -1054,7 +1069,7 @@ div.cabinet {
 .device .table.style > div:nth-child(2n+1) > div:first-child {background-color: lightGray;border-left: 1px solid grey;}
 .device .table > div > div {min-width: 100px;}
 .device .caption {margin-top: 2em;}
-.device .table .table .table, .right .table + .table {background-color: white;width: 100%;}
+.device .table .table .table, .right .table + .table {background-color: white;width: 100%; height: 100%;}
 .device .table .table .table > div > div {padding: 3px;}
 .right .table + .table {margin-top: 1em;}
 

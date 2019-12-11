@@ -29,11 +29,12 @@ class OneLogin_Saml2_AuthnRequest
      * Constructs the AuthnRequest object.
      *
      * @param OneLogin_Saml2_Settings $settings Settings
-     * @param bool   $forceAuthn      When true the AuthNReuqest will set the ForceAuthn='true'
-     * @param bool   $isPassive       When true the AuthNReuqest will set the Ispassive='true'
+     * @param bool   $forceAuthn When true the AuthNReuqest will set the ForceAuthn='true'
+     * @param bool   $isPassive When true the AuthNReuqest will set the Ispassive='true'
      * @param bool   $setNameIdPolicy When true the AuthNReuqest will set a nameIdPolicy
+     * @param string $nameIdValueReq Indicates to the IdP the subject that should be authenticated
      */
-    public function __construct(OneLogin_Saml2_Settings $settings, $forceAuthn = false, $isPassive = false, $setNameIdPolicy = true)
+    public function __construct(OneLogin_Saml2_Settings $settings, $forceAuthn = false, $isPassive = false, $setNameIdPolicy = true, $nameIdValueReq = null)
     {
         $this->_settings = $settings;
 
@@ -44,6 +45,17 @@ class OneLogin_Saml2_AuthnRequest
         $id = OneLogin_Saml2_Utils::generateUniqueID();
         $issueInstant = OneLogin_Saml2_Utils::parseTime2SAML(time());
 
+        $subjectStr = "";
+        if (isset($nameIdValueReq)) {
+            $subjectStr = <<<SUBJECT
+
+    <saml:Subject>
+        <saml:NameID Format="{$spData['NameIDFormat']}">{$nameIdValueReq}</saml:NameID>
+        <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"></saml:SubjectConfirmation>
+    </saml:Subject>
+SUBJECT;
+        }
+
         $nameIdPolicyStr = '';
         if ($setNameIdPolicy) {
             $nameIDPolicyFormat = $spData['NameIDFormat'];
@@ -52,6 +64,7 @@ class OneLogin_Saml2_AuthnRequest
             }
 
             $nameIdPolicyStr = <<<NAMEIDPOLICY
+
     <samlp:NameIDPolicy
         Format="{$nameIDPolicyFormat}"
         AllowCreate="true" />
@@ -93,7 +106,6 @@ ISPASSIVE;
 
         $requestedAuthnStr = '';
         if (isset($security['requestedAuthnContext']) && $security['requestedAuthnContext'] !== false) {
-
             $authnComparison = 'exact';
             if (isset($security['requestedAuthnContextComparison'])) {
                 $authnComparison = $security['requestedAuthnContextComparison'];
@@ -101,6 +113,7 @@ ISPASSIVE;
 
             if ($security['requestedAuthnContext'] === true) {
                 $requestedAuthnStr = <<<REQUESTEDAUTHN
+
     <samlp:RequestedAuthnContext Comparison="$authnComparison">
         <saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef>
     </samlp:RequestedAuthnContext>
@@ -114,8 +127,8 @@ REQUESTEDAUTHN;
             }
         }
 
-        $sp_entity_id = htmlspecialchars($spData['entityId'], ENT_QUOTES);
-        $acs_url = htmlspecialchars($spData['assertionConsumerService']['url'], ENT_QUOTES);
+        $spEntityId = htmlspecialchars($spData['entityId'], ENT_QUOTES);
+        $acsUrl = htmlspecialchars($spData['assertionConsumerService']['url'], ENT_QUOTES);
         $request = <<<AUTHNREQUEST
 <samlp:AuthnRequest
     xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
@@ -126,10 +139,8 @@ REQUESTEDAUTHN;
     IssueInstant="$issueInstant"
     Destination="{$idpData['singleSignOnService']['url']}"
     ProtocolBinding="{$spData['assertionConsumerService']['binding']}"
-    AssertionConsumerServiceURL="{$acs_url}">
-    <saml:Issuer>{$sp_entity_id}</saml:Issuer>
-{$nameIdPolicyStr}
-{$requestedAuthnStr}
+    AssertionConsumerServiceURL="{$acsUrl}">
+    <saml:Issuer>{$spEntityId}</saml:Issuer>{$subjectStr}{$nameIdPolicyStr}{$requestedAuthnStr}
 </samlp:AuthnRequest>
 AUTHNREQUEST;
 
@@ -141,6 +152,8 @@ AUTHNREQUEST;
      * Returns deflated, base64 encoded, unsigned AuthnRequest.
      *
      * @param bool|null $deflate Whether or not we should 'gzdeflate' the request body before we return it.
+     *
+     * @return string
      */
     public function getRequest($deflate = null)
     {

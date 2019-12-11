@@ -1,13 +1,9 @@
 <?php
 	# catch for assholes that don't read the install instructions
 	if(!file_exists("db.inc.php")){
-		require_once( "preflight.inc.php" );
+		require_once( "preflight.php" );
 		exit;
 	}
-/*	if ( ! $_SERVER["HTTPS"] ) {
-		printf( "<meta http-equiv='refresh' content='0; url='https://%s'>", $_SERVER["SERVER_NAME"] );
-		exit();
-	} */
 
 	require_once( 'db.inc.php' );
 	require_once( 'facilities.inc.php' );

@@ -17,7 +17,12 @@ class Config{
 				$this->ParameterArray[$row['Parameter']]=$List;
 				$this->defaults[$row['Parameter']]=$row['DefaultVal'];
 			}else{
-				$this->ParameterArray[$row['Parameter']]=$row['Value'];
+				// this allows us to support quotes in paths for whatever reason
+				if(preg_match('/.*path$/',$row['Parameter'])){
+					$this->ParameterArray[$row['Parameter']]=html_entity_decode($row['Value'],ENT_QUOTES);
+				}else{
+					$this->ParameterArray[$row['Parameter']]=$row['Value'];
+				}
 				$this->defaults[$row['Parameter']]=$row['DefaultVal'];
 			}
 		}
@@ -41,13 +46,19 @@ class Config{
 				}
 					
 				$sql='update fac_Config set Value=\''.sanitize($valueStr).'\' where Parameter=\''.$key.'\'';
-				$dbh->query( $sql );
+				if(!$dbh->query($sql)){
+					$info=$dbh->errorInfo();
+					error_log("UpdateConfig::PDO Error: {$info[2]} SQL=$sql");
+				}
 			}else{
 				if(preg_match('/[m|w]Date/',$key)){
 					if($value!='now'){$value='blank';} // if someone puts a weird value in default it back to blank
 				}
 				$sql="update fac_Config set Value=\"".sanitize($value)."\" where Parameter=\"$key\";";
-				$dbh->query($sql);
+				if(!$dbh->query($sql)){
+					$info=$dbh->errorInfo();
+					error_log("UpdateConfig::PDO Error: {$info[2]} SQL=$sql");
+				}
 			}
 		}
 		return;
@@ -63,6 +74,8 @@ class Config{
 			if($dbh->query($sql)){
 				return true;
 			}else{
+				$info=$dbh->errorInfo();
+				error_log("UpdateParamter::PDO Error: {$info[2]} SQL=$sql");
 				return false;
 			}
 		}

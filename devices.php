@@ -467,9 +467,10 @@
 		if(isset($_POST['names'])){
 			$dev->DeviceID=$_POST['refreshswitch'];
 			$dev->GetDevice();
+			$names = SwitchInfo::getPortNames($_POST['refreshswitch']);
 			// This function should be hidden if they don't have rights, but just in case
 			if($dev->Rights=="Write"){
-				foreach(SwitchInfo::getPortNames($_POST['refreshswitch']) as $PortNumber => $Label){
+				foreach($names as $PortNumber => $Label){
 					$port=new DevicePorts();
 					$port->DeviceID=$_POST['refreshswitch'];
 					$port->PortNumber=$PortNumber;
@@ -477,13 +478,14 @@
 					$port->updateLabel();
 				}
 			}
-			echo json_encode(SwitchInfo::getPortNames($_POST['refreshswitch']));
+			echo json_encode($names);
 		}elseif(isset($_POST['Notes'])){
 			$dev->DeviceID=$_POST['refreshswitch'];
 			$dev->GetDevice();
+			$alias = SwitchInfo::getPortAlias($_POST['refreshswitch']);
 			// This function should be hidden if they don't have rights, but just in case
 			if($dev->Rights=="Write"){
-				foreach(SwitchInfo::getPortAlias($_POST['refreshswitch']) as $PortNumber => $Notes){
+				foreach($alias as $PortNumber => $Notes){
 					$port=new DevicePorts();
 					$port->DeviceID=$_POST['refreshswitch'];
 					$port->PortNumber=$PortNumber;
@@ -492,7 +494,7 @@
 					$port->updatePort();
 				}
 			}
-			echo json_encode(SwitchInfo::getPortAlias($_POST['refreshswitch']));
+			echo json_encode($alias);
 		}else{
 			$dev->DeviceID = $_POST['refreshswitch'];
 			$tagList = $dev->GetTags();
@@ -500,7 +502,7 @@
 			//	If you select to OptIn switch polling, only poll if you have the Poll tag assigned to this device
 			//	but if you are an OptOut site, poll everything unless it has the NoPoll tag assigned
 			//
-			if( ( $config->ParameterArray["NetworkCapacityReportOptIn"] == "OptIn" && in_array( "Poll", $tagList ) || ( $config->ParameterArray["NetworkCapacityReportOptOut"] == "OptOut" && ! in_array( "NoPoll", $tagList )))) {
+			if( ( $config->ParameterArray["NetworkCapacityReportOptIn"] == "OptIn" && in_array( "Poll", $tagList ) || ( $config->ParameterArray["NetworkCapacityReportOptIn"] == "OptOut" && ! in_array( "NoPoll", $tagList )))) {
 				echo json_encode(SwitchInfo::getPortStatus($_POST['refreshswitch']));
 			} else {
 				echo json_encode(array());
@@ -954,7 +956,7 @@
 			} else if ($cvtype=="set") {
 				echo '<div><select name="',$inputname,'" id="',$inputname,'">';
 				foreach(explode(',',$dcaList[$customkey]->DefaultValue) as $dcaValue){
-					$selected=($customdata["value"]==$dcaValue)?' selected':'';
+					$selected=(trim($customdata["value"])==trim($dcaValue))?' selected':'';
 					print "\n\t<option value=\"$dcaValue\"$selected>$dcaValue</option>";
 				}
 				echo '</select></div>';
@@ -988,7 +990,7 @@ $write=($dev->Rights=="Write")?true:$write;
   <link rel="stylesheet" href="css/jquery-ui.css" type="text/css">
   <link rel="stylesheet" href="css/validationEngine.jquery.css" type="text/css">
   <link rel="stylesheet" href="css/jquery-te-1.4.0.css" type="text/css">
-  <style type="text/css"></style>
+  <style type="text/css">#div { border: 1px solid red; margin: -1px; }</style>
   <!--[if lt IE 9]>
   <link rel="stylesheet"  href="css/ie.css" type="text/css" />
   <![endif]-->
@@ -1306,8 +1308,8 @@ $(document).ready(function() {
 			$('#PowerSupplyCount').val(data['PSCount']);
 			$('select[name=DeviceType]').val(data['DeviceType']).trigger('change');
 			$('#Height').trigger('change');
-			(data['FrontPictureFile']!='')?$('#devicefront').attr('src','pictures/'+data['FrontPictureFile']):$('#devicefront').removeAttr('src').hide();
-			(data['RearPictureFile']!='')?$('#devicerear').attr('src','pictures/'+data['RearPictureFile']):$('#devicerear').removeAttr('src').hide();
+			(data['FrontPictureFile']!='')?$('#devicefront').attr('src',"<?php echo $config->ParameterArray['picturepath'];?>"+data['FrontPictureFile']):$('#devicefront').removeAttr('src').hide();
+			(data['RearPictureFile']!='')?$('#devicerear').attr('src',"<?php echo $config->ParameterArray['picturepath'];?>"+data['RearPictureFile']):$('#devicerear').removeAttr('src').hide();
 			toggledeviceimages();
 			customattrrefresh($('#TemplateID').val());
 		});
@@ -1950,11 +1952,11 @@ echo '
 <fieldset id="deviceimages">
 	<legend>'.__("Device Images").'</legend>
 	<div>';
-		$frontpic=($templ->FrontPictureFile!='')?' src="pictures/'.$templ->FrontPictureFile.'"':'';
-		$rearpic=($templ->RearPictureFile!='')?' src="pictures/'.$templ->RearPictureFile.'"':'';
+		$frontpic=($templ->FrontPictureFile!='')?' src="'.$config->ParameterArray['picturepath'].'/'.$templ->FrontPictureFile.'"':'';
+		$rearpic=($templ->RearPictureFile!='')?' src="'.$config->ParameterArray['picturepath'].'/'.$templ->RearPictureFile.'"':'';
 echo '
-		<img id="devicefront" src="pictures/'.$templ->FrontPictureFile.'" alt="front of device">
-		<img id="devicerear" src="pictures/'.$templ->RearPictureFile.'" alt="rear of device">
+		<img id="devicefront" src="'.$config->ParameterArray['picturepath'].'/'.$templ->FrontPictureFile.'" alt="front of device">
+		<img id="devicerear" src="'.$config->ParameterArray['picturepath'].'/'.$templ->RearPictureFile.'" alt="rear of device">
 	</div>
 </fieldset>
 <fieldset id="proxmoxblock" class="hide">
@@ -2470,7 +2472,7 @@ $connectioncontrols.=($dev->DeviceID>0 && !empty($portList))?'
 		print "\t\t\t</div><!-- END div.table -->\n\t\t</div>\n\t</div>\n";
 	}
 ?>
-		<div class="caption">
+		<div><div><div style="position: relative;">&nbsp;<div id="buttonbar" style="position: absolute; min-width: 400px; left: 0px; right: 0px; margin-left: auto; margin-right: auto; text-align: center;">
 <?php
 	if($write){
 		if($dev->DeviceID >0){
@@ -2490,7 +2492,8 @@ $connectioncontrols.=($dev->DeviceID>0 && !empty($portList))?'
 	}
 ?>
 
-		</div>
+		</div></div></div>
+		<div></div></div>
 	</div> <!-- END div.table -->
 </div></div>
 </div> <!-- END div.table -->
@@ -2673,6 +2676,12 @@ $connectioncontrols.=($dev->DeviceID>0 && !empty($portList))?'
 			}
 		});
 
+		// Safari is garbage
+		// This is a hack to correct a problem with safari not rendering the table caption
+		// correctly.  Instead I am putting a blank row at the bottom of the device connection
+		// table then using css to center it but it has to have the element set to the width
+		// of the table
+		$('#buttonbar').width($('#pandn').width());
 	});
 </script>
 

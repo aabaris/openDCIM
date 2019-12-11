@@ -7,6 +7,8 @@
 	$searchTerm=preg_replace("/[[:cntrl:]]/","",$_REQUEST['search']);
 	//Remove any extra quotes that could get passed in from some funky js or something
 	$searchTerm=str_replace(array("'",'"'),"",$searchTerm);
+	# prevent XSS script injection reported by mullaneywt
+	$searchKey=sanitize($searchKey);
 	# prevent script injection where we display the searchTerm in the title
 	# reported by Jacob Senn, Capital One
 	$searchTerm=sanitize($searchTerm);
@@ -122,7 +124,21 @@
 		foreach($dev as $prop => $val){
 			$dev->$prop=(isset($_GET[$prop]))?$_GET[$prop]:$val;
 		}
-		$devList=$dev->Search(true);
+		
+		// Now check for any DCAs and add them
+		$attrList=DeviceCustomAttribute::GetDeviceCustomAttributeList();
+		foreach($attrList as $ca){
+			$prop = $ca->Label;
+			if(!empty($prop)){
+				$dev->$prop=(isset($_GET[$prop]))?$_GET[$prop]:$dev->$prop;
+			}
+		}
+
+		if ( isset( $_GET["loose"] )) {
+			$devList = $dev->LooseSearch(true);
+		} else {
+			$devList=$dev->Search(true);
+		}
 		$resultcount=count($devList);
 	}elseif($searchKey!=""){
 		// This should be catching custom attribute searches
@@ -148,7 +164,7 @@
 			$temp[$x]['cabinet']=$device->Cabinet;
 			$temp[$x]['parent']=$device->ParentDevice;
 			$temp[$x]['rights']=$device->Rights;
-			$cabtemp[$device->Cabinet]="";
+			$cabtemp[$device->Cabinet] = [];
 			++$x;
 			if($device->ParentDevice>0){
 				foreach($uncleDaddy=$device->GetDeviceLineage() as $branches){

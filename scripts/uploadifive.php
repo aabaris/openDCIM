@@ -12,7 +12,21 @@ header('Content-Type: application/json');
 
 // Set the uplaod directory
 $validDir=array('pictures','drawings','images');
+foreach($config->ParameterArray as $option => $value){
+	if(preg_match('/path$/',$option)){
+		array_push($validDir,$value);
+	}
+}
 $uploadDir=(isset($_POST['dir']) && in_array($_POST['dir'], $validDir))?$_POST['dir']:'';
+// Make it where we can pass it these keywords and retrieve the paths from
+// the config instead of passing the path in.  prevents an error if someone changes
+// the path in the configuration and they don't reload the page that has the 
+// javascript cached with the new path.  This should cut down on weird errors.
+if($uploadDir=='drawings'){
+	$uploadDir=$config->ParameterArray['drawingpath'];
+}elseif($uploadDir=='pictures'){
+	$uploadDir=$config->ParameterArray['picturepath'];
+}
 
 $status['status']=0;
 $status['msg']='';

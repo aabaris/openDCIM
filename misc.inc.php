@@ -2,7 +2,7 @@
 /* All functions contained herein will be general use functions */
 
 /* Create a quick reference for datacenter data */
-$_SESSION['datacenters']=DataCenter::GetDCList(true);
+@$_SESSION['datacenters']=DataCenter::GetDCList(true);
 
 /* Generic html sanitization routine */
 
@@ -98,7 +98,7 @@ Example usage:
 	exit;
 */
 function path(){
-	$path=explode("/",$_SERVER['REQUEST_URI']);
+	$path=explode("/",sanitize($_SERVER['REQUEST_URI']));
 	unset($path[(count($path)-1)]);
 	$path=implode("/",$path);
 	return $path;
@@ -114,9 +114,9 @@ function redirect($target = null) {
 		}
 	}else{
 		//Try to ensure that a properly formatted uri has been passed in.
-		if(substr($target, 4)!='http'){
+		if(substr($target, 0, 4)!='http'){
 			//doesn't start with http or https check to see if it is a path
-			if(substr($target, 1)!='/'){
+			if(substr($target, 0, 1)!='/'){
 				//didn't start with a slash so it must be a filename
 				$target=path()."/".$target;
 			}else{
@@ -128,10 +128,27 @@ function redirect($target = null) {
 			return $target;
 		}
 	}
-	if(array_key_exists('HTTPS', $_SERVER) && $_SERVER["HTTPS"]=='on') {
-		$url = "https://".$_SERVER['SERVER_NAME'].$target;
-	} else {
-		$url = "http://".@$_SERVER['SERVER_NAME'].$target;
+	// If we made it here we didn't return above so bring in the config values
+	$config=new Config();
+	// Write out the value of the InstallURL to a shorter variable and trim it of whitespace
+	// just in case some smart ass managed to get something weird in the value
+	$installURL=trim($config->ParameterArray['InstallURL']);
+	// Keep some smart ass admin from trying to use this to access weird things
+	$installURL=str_replace("..","",$installURL);
+	// Since we format our path above using a / trim any extras from the user supplied
+	// value or if they pull something cute and put ////
+	$installURL=rtrim($installURL,"/");
+	// Check if our $installURL value is blank
+	if($installURL!=""){
+		// $installURL isn't blank so combine it with the target to get a valid redirect target
+		$url = $installURL.$target;
+	}else{
+		// $installURL is blank so let's try to guess what the server will be for the redirect
+		if(array_key_exists('HTTPS', $_SERVER) && $_SERVER["HTTPS"]=='on') {
+			$url = "https://".$_SERVER['SERVER_NAME'].$target;
+		} else {
+			$url = "http://".@$_SERVER['SERVER_NAME'].$target;
+		}
 	}
 	return $url;
 }
@@ -850,18 +867,26 @@ if(!function_exists("updateNavTreeHTML")){
 	we are.  It may be needed for the installation.
 */
 
-if( AUTHENTICATION=="Saml" && !isset($_SESSION['userid']) ){
+if( AUTHENTICATION=="Saml" && !isset($_SESSION['userid']) && php_sapi_name()!="cli" && !isset($loginPage))
+{
+	$savedurl = $_SERVER['SCRIPT_NAME'] . "?" . sanitize($_SERVER['QUERY_STRING']);
+	setcookie( 'targeturl', $savedurl, time()+60 );
 	header("Location: ".redirect('saml/login.php'));
 	exit;
 }
 
-if(isset($devMode)&&$devMode){
-	// Development mode, so don't apply the upgrades
-}else{
-	if(file_exists("install.php") && basename($_SERVER['SCRIPT_NAME'])!="install.php" ){
-		// new installs need to run the install first.
-		header("Location: ".redirect('install.php'));
-		exit;
+if(!(isset($devMode)&&$devMode)) {
+	$sql = "select Value from fac_Config where Parameter='Version'";
+	if ( $r = $dbh->query( $sql ))
+		$version = $r->fetchColumn();
+	else
+		$version = "";
+	if ( VERSION != $version ) {
+		if(file_exists("install.php") && basename($_SERVER['SCRIPT_NAME'])!="install.php" ){
+			// new installs need to run the install first.
+			header("Location: ".redirect('install.php'));
+			exit;
+		}
 	}
 }
 
@@ -897,7 +922,7 @@ if(!People::Current()){
 	if(AUTHENTICATION=="Oauth"){
 		header("Location: ".redirect('oauth/login.php'));
 		exit;
-	} elseif ( AUTHENTICATION=="Saml"){
+	} elseif ( AUTHENTICATION=="Saml" && !isset($loginPage) ){
 		header("Location: ".redirect('saml/login.php'));
 		exit;
 	} elseif ( AUTHENTICATION=="LDAP" && !isset($loginPage) ) {
@@ -992,6 +1017,14 @@ if( AUTHENTICATION == "LDAP" ) {
 	}
 	$lmenu[]='<a href="login_ldap.php?logout"><span>'.__("Logout").'</span></a>';
 }
+# Can really think that this is necessary - here for completemess
+#if( AUTHENTICATION == "Saml" ) {
+#	// Clear out the Reports menu button and create the Login menu button when not logged in
+#	if ( isset($loginPage) ) {
+#		$rmenu = array();
+#	}
+#	$lmenu[]='<a href="saml/logout.php"><span>'.__("Logout").'</span></a>';
+#}
 
 function download_file($archivo, $downloadfilename = null) {
 	if (file_exists($archivo)) {
